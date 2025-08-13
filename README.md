@@ -105,9 +105,30 @@ conda run -n lfp_bot_py311 python test_intel_arc.py
 conda run -n lfp_bot_py311 python test_bot_components.py
 ```
 
-### 5. Запуск бота
-```bash
-python bot.py
+### 5. Индексация базы знаний
+
+Перед первым запуском создайте векторную БД из текстов в `knowledge_base` (используются только .txt и .md):
+```powershell
+python .\ingest.py
+```
+
+### 6. Запуск бота
+Запуск в двух режимах на CPU.
+
+```powershell
+# Вариант A: Чистый CPU (PyTorch)
+$env:INFERENCE_BACKEND="cpu"
+$env:DEVICE="cpu"
+$env:PYTHONUNBUFFERED="1"
+python .\bot.py
+
+# Вариант B: OpenVINO (ускоренный CPU)
+# Требуется установить пакеты (один раз):
+# python -m pip install -U openvino optimum-intel transformers huggingface_hub
+$env:INFERENCE_BACKEND="openvino"
+$env:OPENVINO_DEVICE="CPU"
+$env:PYTHONUNBUFFERED="1"
+python .\bot.py
 ```
 
 ## 🐳 Docker развертывание
