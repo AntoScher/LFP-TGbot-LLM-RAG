@@ -5,7 +5,8 @@ flask==2.3.3
 flask-sqlalchemy==3.0.3
 langchain==0.0.354
 chromadb==0.4.15
-transformers==4.34.0
+transformers>=4.41.2
+# PyTorch CPU (may be unused if OpenVINO backend is selected)
 torch>=2.1.0 --index-url https://download.pytorch.org/whl/cpu
 sentence-transformers==2.2.2
 python-dotenv==1.0.0
@@ -24,3 +25,7 @@ asyncio==3.4.3
 # Утилиты
 python-dateutil==2.8.2
 tqdm==4.65.0  # Прогресс-бары
+
+# OpenVINO inference backend
+openvino>=2024.2.0
+optimum-intel>=1.17.0
