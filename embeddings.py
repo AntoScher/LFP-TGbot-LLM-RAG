@@ -5,6 +5,7 @@ from typing import Optional, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.schema.vectorstore import VectorStoreRetriever
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +70,13 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
                 # Продолжаем создание новой БД в случае ошибки загрузки
                 logger.warning("Creating new vector database due to loading error")
         
-        # Создаем новую пустую базу данных
+        # Создаем новую пустую базу данных без добавления фиктивного документа
         try:
             logger.info("Creating new empty vector database...")
             vectordb = Chroma(
                 embedding_function=embedder,
                 persist_directory=persist_dir
             )
-            # Создаем пустую коллекцию
-            vectordb.add_texts(["Initial empty document"])
             vectordb.persist()
             
             retriever = vectordb.as_retriever(
