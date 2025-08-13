@@ -23,6 +23,15 @@ try:
 except ImportError as e:
     print(f"Warning: Intel Extension for Transformers not available: {e}")
     ITREX_AVAILABLE = False
+
+# Импорт OpenVINO backend (опционально)
+try:
+    from optimum.intel.openvino import OVModelForCausalLM
+    OPENVINO_AVAILABLE = True
+except Exception as e:
+    print(f"OpenVINO backend not available: {e}")
+    OPENVINO_AVAILABLE = False
+
 from langchain.llms import HuggingFacePipeline
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -57,25 +66,56 @@ def load_system_prompt(path: str = "knowledge_base/system_prompt.txt") -> str:
 
 
 def init_llm_pipeline():
-    """Инициализация LLM пайплайна с оптимизациями для Intel Arc."""
+    """Инициализация LLM пайплайна с возможностью выбора бэкенда (OpenVINO / Torch)."""
     global _llm_pipe
     if _llm_pipe is not None:
         return _llm_pipe
 
     model_id = os.getenv("MODEL_NAME", "Qwen/Qwen2-1.5B-Instruct")
+    cache_dir = os.getenv("HF_HOME")
+    backend = os.getenv("INFERENCE_BACKEND", "auto").lower()  # openvino | xpu | cpu | auto
+
+    # Загружаем токенизатор
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_id,
+        cache_dir=cache_dir,
+        trust_remote_code=True
+    )
+
+    # Ветка OpenVINO
+    if backend in ["openvino", "ov"] or (backend == "auto" and OPENVINO_AVAILABLE):
+        if not OPENVINO_AVAILABLE:
+            logging.warning("OpenVINO selected but not available. Falling back to Torch CPU.")
+        else:
+            ov_device = os.getenv("OPENVINO_DEVICE", "CPU")  # CPU | GPU
+            logging.info(f"Loading model {model_id} with OpenVINO on {ov_device}...")
+            ov_model = OVModelForCausalLM.from_pretrained(
+                model_id,
+                export=True,
+                compile=True,
+                device=ov_device,
+                cache_dir=cache_dir,
+                trust_remote_code=True
+            )
+            text_generation_pipeline = pipeline(
+                task="text-generation",
+                model=ov_model,
+                tokenizer=tokenizer,
+                max_new_tokens=512,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.1,
+                return_full_text=True,
+            )
+            _llm_pipe = HuggingFacePipeline(pipeline=text_generation_pipeline)
+            logging.info("OpenVINO pipeline initialized")
+            return _llm_pipe
+
+    # Ветка Torch (CPU/XPU)
     device = os.getenv("DEVICE", "xpu" if XPU_AVAILABLE and ITREX_AVAILABLE else "cpu")
-    cache_dir = os.getenv("HF_HOME")  # путь к офлайн-кэшу HuggingFace, если задан
-
     try:
-        # Загружаем токенизатор
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=cache_dir,
-            trust_remote_code=True
-        )
-
         if ITREX_AVAILABLE and device == "xpu":
-            # Настройки квантования для Intel Arc
+            # Настройки квантования для Intel Arc (ITREX)
             quant_config = QuantizationConfig(
                 approach="weight_only",
                 op_type_dict={
@@ -93,10 +133,7 @@ def init_llm_pipeline():
                     "rtn_args": {"enable_full_range": True, "enable_mse_search": True}
                 }
             )
-            
             print(f"Loading model {model_id} on XPU with ITREX optimizations...")
-            
-            # Загружаем модель с квантованием через ITREX
             model = AutoModelForCausalLM_ITREX.from_pretrained(
                 model_id,
                 quantization_config=quant_config,
@@ -107,9 +144,7 @@ def init_llm_pipeline():
                 trust_remote_code=True
             )
             print("Model loaded on XPU with ITREX optimizations")
-            
         else:
-            # Обычная загрузка модели без ITREX
             if device == "xpu":
                 print("ITREX not available, falling back to standard XPU loading")
                 device_map = "auto"
@@ -117,7 +152,6 @@ def init_llm_pipeline():
             else:
                 device_map = None
                 torch_dtype = torch.float32
-            
             print(f"Loading model {model_id} on {device.upper()}...")
             model = AutoModelForCausalLM.from_pretrained(
                 model_id,
@@ -127,14 +161,12 @@ def init_llm_pipeline():
                 cache_dir=cache_dir,
                 trust_remote_code=True
             )
-            
             if device == "cpu":
                 model = model.to('cpu')
                 print("Model loaded on CPU")
             else:
                 print("Model loaded with standard device mapping")
 
-        # Создаем пайплайн с настройками генерации
         text_generation_pipeline = pipeline(
             "text-generation",
             model=model,
@@ -146,8 +178,6 @@ def init_llm_pipeline():
             return_full_text=True,
             device_map="auto" if device == "xpu" and ITREX_AVAILABLE else None,
         )
-
-        # Создаем LangChain пайплайн
         _llm_pipe = HuggingFacePipeline(pipeline=text_generation_pipeline)
         return _llm_pipe
 
@@ -160,7 +190,6 @@ def init_qa_chain(retriever):
     llm_pipe = init_llm_pipeline()
     system_prompt = load_system_prompt()
 
-    # Define the prompt template with proper formatting for the model
     prompt_template = """<|im_start|>system
 {system_prompt}
 <|im_end|>
@@ -173,12 +202,13 @@ Question: {question}
 <|im_start|>assistant
 """
 
+    # Фикс: system_prompt подставляем частично на этапе сборки, чтобы не передавать его в рантайме
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["system_prompt", "context", "question"]
+        input_variables=["context", "question"],
+        partial_variables={"system_prompt": system_prompt}
     )
 
-    # Create the QA chain with proper configuration
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm_pipe,
         chain_type="stuff",
@@ -192,17 +222,14 @@ Question: {question}
             "document_variable_name": "context",
             "verbose": True
         },
-        return_source_documents=True,
-        input_key="question",  # Changed from "query" to match the input in handle_message
+        return_source_documents=False,
+        input_key="question",
         output_key="result",
-        verbose=True  # Enable verbose for debugging
+        verbose=True
     )
-    
-    # Add debug logging
+
     logging.info("QA chain initialized successfully")
     logging.info(f"Input key: {qa_chain.input_key}")
     logging.info(f"Output key: {qa_chain.output_key}")
-    
-    # Return both the chain and the system prompt
+
     return qa_chain, system_prompt
-    return qa_chain

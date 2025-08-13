@@ -16,14 +16,16 @@ from flask_app import create_app, db as flask_db
 from flask_app.models import SessionLog
 from embeddings import init_vector_store, VectorStoreInitializationError
 from chains import init_qa_chain
+import threading
 
 # Настройка логирования
+os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('bot.log', encoding='utf-8')
+        logging.FileHandler('logs/bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ retriever = None
 qa_chain = None
 is_initialized = False
 initialization_error = None
+
 
 def setup_environment():
     """Настройка окружения и загрузка конфигурации"""
@@ -58,6 +61,13 @@ def setup_environment():
             with flask_app.app_context():
                 flask_db.create_all()
                 logger.info("Database tables verified/created")
+
+            # Запускаем health-сервер во втором потоке, если не отключен
+            if os.getenv("ENABLE_HEALTH_SERVER", "1") == "1":
+                def run_health():
+                    flask_app.run(host="0.0.0.0", port=int(os.getenv("HEALTH_PORT", "5000")), debug=False, use_reloader=False, threaded=True)
+                threading.Thread(target=run_health, name="health-server", daemon=True).start()
+                logger.info("Health server started on /health")
                 
         except Exception as e:
             error_msg = f"Failed to initialize Flask app: {str(e)}"
@@ -217,29 +227,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             # Get relevant context from the retriever
             try:
-                logger.info(f"Retrieving context for query: {query[:100]}...")
-                docs = await asyncio.to_thread(lambda: retriever.get_relevant_documents(query))
-                context = "\n\n".join([doc.page_content for doc in docs])
-                logger.info(f"Retrieved context length: {len(context)} characters")
-                
-                # Prepare the input for the QA chain
-                global _system_prompt
-                system_prompt = _system_prompt if '_system_prompt' in globals() else ""
-                
-                # Create the input dictionary with the expected format
-                chain_input = {
-                    "question": query,  # The question to answer
-                    "context": context,  # The retrieved context
-                    "system_prompt": system_prompt  # The system prompt
-                }
-                
-                # Log the input for debugging
-                logger.info(f"QA chain input keys: {chain_input.keys()}")
-                logger.info(f"System prompt length: {len(system_prompt)} characters")
-                
-                # Call the QA chain with proper input format
-                logger.info("Calling QA chain...")
-                result = await asyncio.to_thread(lambda: qa_chain(chain_input))
+                # Вызов QA цепи: она сама выполнит ретрив с заданным retriever
+                logger.info("Calling QA chain with question only...")
+                result = await asyncio.to_thread(lambda: qa_chain({"question": query}))
                 logger.info("QA chain call completed")
                 
             except Exception as e:

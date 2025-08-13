@@ -18,7 +18,13 @@ conda create -n $envName python=$pythonVersion -y
 # Activate and install requirements
 Write-Host "Installing requirements..." -ForegroundColor Cyan
 conda run -n $envName pip install -r requirements.txt
-conda run -n $envName pip install -r requirements_xpu.txt
+
+# Установка Intel XPU зависимостей
+Write-Host "Installing Intel XPU dependencies..." -ForegroundColor Cyan
+conda run -n $envName pip install --pre torch==2.7.1+xpu torchvision==0.22.1+xpu torchaudio==2.7.1+xpu --index-url https://download.pytorch.org/whl/nightly/xpu
+conda run -n $envName pip install --pre --upgrade ipex-llm[xpu] --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+conda run -n $envName pip install transformers==4.42.0 accelerate==0.29.3 bitsandbytes==0.43.0 sentence-transformers==2.2.2 chromadb==0.3.23
+
 conda run -n $envName pip install python-dotenv python-telegram-bot[ext]
 
 # Create .env file if not exists

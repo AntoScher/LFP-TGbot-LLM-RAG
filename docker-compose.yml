@@ -15,6 +15,9 @@ services:
       - PYTHONUNBUFFERED=1
       - FLASK_APP=flask_app/__init__.py
       - FLASK_ENV=production
+      # Uncomment to enable OpenVINO backend (CPU or GPU)
+      # - INFERENCE_BACKEND=openvino
+      # - OPENVINO_DEVICE=CPU
     env_file:
       - .env
     restart: unless-stopped

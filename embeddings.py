@@ -1,10 +1,12 @@
 import os
 import logging
+import traceback
 from functools import lru_cache
 from typing import Optional, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.schema.vectorstore import VectorStoreRetriever
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +16,7 @@ class VectorStoreInitializationError(Exception):
 
 
 @lru_cache(maxsize=1)
-def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
+def init_vector_store(persist_dir: Optional[str] = None) -> VectorStoreRetriever:
     """
     Инициализирует или загружает векторное хранилище Chroma.
     
@@ -28,6 +30,14 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
         VectorStoreInitializationError: Если не удалось инициализировать хранилище
     """
     try:
+        # Разрешаем путь из переменных окружения
+        if not persist_dir:
+            persist_dir = (
+                os.getenv("PERSIST_DIRECTORY")
+                or os.getenv("CHROMA_DB_PATH")
+                or "./chroma_db"
+            )
+
         logger.info(f"Initializing vector store in directory: {persist_dir}")
         
         # Проверяем доступность директории
@@ -69,15 +79,13 @@ def init_vector_store(persist_dir: str = "./chroma_db") -> VectorStoreRetriever:
                 # Продолжаем создание новой БД в случае ошибки загрузки
                 logger.warning("Creating new vector database due to loading error")
         
-        # Создаем новую пустую базу данных
+        # Создаем новую пустую базу данных без добавления фиктивного документа
         try:
             logger.info("Creating new empty vector database...")
             vectordb = Chroma(
                 embedding_function=embedder,
                 persist_directory=persist_dir
             )
-            # Создаем пустую коллекцию
-            vectordb.add_texts(["Initial empty document"])
             vectordb.persist()
             
             retriever = vectordb.as_retriever(
