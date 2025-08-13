@@ -215,31 +215,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Асинхронное выполнение запроса к LLM
         logger.info(f"Processing query from user {user_id}")
         try:
-            # Get relevant context from the retriever
+            # Call the QA chain directly with the question
+            # The chain will handle context retrieval internally
             try:
-                logger.info(f"Retrieving context for query: {query[:100]}...")
-                docs = await asyncio.to_thread(lambda: retriever.get_relevant_documents(query))
-                context = "\n\n".join([doc.page_content for doc in docs])
-                logger.info(f"Retrieved context length: {len(context)} characters")
-                
-                # Prepare the input for the QA chain
-                global _system_prompt
-                system_prompt = _system_prompt if '_system_prompt' in globals() else ""
-                
-                # Create the input dictionary with the expected format
-                chain_input = {
-                    "question": query,  # The question to answer
-                    "context": context,  # The retrieved context
-                    "system_prompt": system_prompt  # The system prompt
-                }
-                
-                # Log the input for debugging
-                logger.info(f"QA chain input keys: {chain_input.keys()}")
-                logger.info(f"System prompt length: {len(system_prompt)} characters")
-                
-                # Call the QA chain with proper input format
-                logger.info("Calling QA chain...")
-                result = await asyncio.to_thread(lambda: qa_chain(chain_input))
+                logger.info(f"Calling QA chain with query: {query[:100]}...")
+                result = await asyncio.to_thread(lambda: qa_chain({"question": query}))
                 logger.info("QA chain call completed")
                 
             except Exception as e:
