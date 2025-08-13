@@ -193,7 +193,7 @@ Question: {question}
             "verbose": True
         },
         return_source_documents=True,
-        input_key="question",  # Changed from "query" to match the input in handle_message
+        input_key="question",
         output_key="result",
         verbose=True  # Enable verbose for debugging
     )

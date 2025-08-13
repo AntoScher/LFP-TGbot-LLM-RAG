@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from functools import lru_cache
 from typing import Optional, Any
 from langchain_community.embeddings import HuggingFaceEmbeddings
