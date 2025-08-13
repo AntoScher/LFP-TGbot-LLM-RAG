@@ -144,6 +144,31 @@ ENV/
 env.bak/
 venv.bak/
 
+# Project-specific large/binary artifacts to avoid committing
+# Logs and telemetry
+logs/
+*.log
+
+# Chroma vector DB
+chroma_db/
+
+# Local Flask SQLite DBs
+instance/
+flask_app.db
+sql_app.db
+
+# Knowledge base large binaries (keep text sources only)
+knowledge_base/*.pdf
+knowledge_base/*.docx
+knowledge_base/*.xlsx
+knowledge_base/*.pptx
+
+# Caches
+cache/
+tmp/
+*.tmp
+*.bak
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -200,6 +225,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+cache/
+*.bin
+*.pt
+*.onnx
+*.safetensors
 
 # Marimo
 marimo/_static/
