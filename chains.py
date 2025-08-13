@@ -178,7 +178,7 @@ Question: {question}
         input_variables=["system_prompt", "context", "question"]
     )
 
-    # Create the QA chain with proper configuration
+    # Создаем RetrievalQA, но будем передавать свой контекст (чтобы избежать повторного ретрива)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm_pipe,
         chain_type="stuff",
@@ -192,17 +192,14 @@ Question: {question}
             "document_variable_name": "context",
             "verbose": True
         },
-        return_source_documents=True,
-        input_key="question",  # Changed from "query" to match the input in handle_message
+        return_source_documents=False,
+        input_key="question",
         output_key="result",
-        verbose=True  # Enable verbose for debugging
+        verbose=True
     )
     
-    # Add debug logging
     logging.info("QA chain initialized successfully")
     logging.info(f"Input key: {qa_chain.input_key}")
     logging.info(f"Output key: {qa_chain.output_key}")
     
-    # Return both the chain and the system prompt
     return qa_chain, system_prompt
-    return qa_chain
